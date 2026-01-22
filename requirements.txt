@@ -1,0 +1,30 @@
+# Alyosha Voice Assistant - Dependencies
+
+# LLM
+google-genai>=1.0.0
+
+# Speech-to-Text
+faster-whisper>=1.0.0
+
+# Text-to-Speech
+elevenlabs>=1.0.0
+
+# Wake-word detection
+vosk>=0.3.45
+
+# UI
+PyQt6>=6.6.0
+psutil
+pyaudio
+webrtcvad-wheels
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# Config
+python-dotenv>=1.0.0
+
+# Utils
+requests>=2.31.0
+psutil
+pyautogui
+pyperclip
