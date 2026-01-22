@@ -157,9 +157,6 @@ class MainWindow(QMainWindow):
         shadow.setOffset(0, 4)
         central.setGraphicsEffect(shadow)
         
-        shadow.setOffset(0, 4)
-        central.setGraphicsEffect(shadow)
-        
         # Use a stacked layout approach: background + content overlay
         from PyQt6.QtWidgets import QStackedLayout
         
@@ -453,7 +450,6 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str, str)
     def _on_message(self, role: str, content: str):
         """Обработка нового сообщения"""
-        print(f"[UI] Message received: {role} -> '{content}'")
         self.chat.add_message(content, role)
         # Track in session manager
         self.session_manager.add_message(role, content)

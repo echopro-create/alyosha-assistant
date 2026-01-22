@@ -242,9 +242,9 @@ class AudioStream:
         if not hasattr(self, '_chunk_count'):
             self._chunk_count = 0
         self._chunk_count += 1
-        if self._chunk_count % 50 == 0:
-            # Print as int16 RMS for debug, but logical level is float
-            print(f"[AUDIO] Chunk #{self._chunk_count}, raw_rms: {rms:.0f}, level: {level:.4f}")
+        # Debug disabled in production
+        # if self._chunk_count % 50 == 0:
+        #     print(f"[AUDIO] Chunk #{self._chunk_count}, raw_rms: {rms:.0f}, level: {level:.4f}")
         
         # Call user callback
         self.callback(audio.copy(), self.get_average_level())
@@ -258,7 +258,7 @@ class AudioStream:
     
     def start(self):
         """Запустить аудио поток"""
-        print("[AUDIO] Запускаю аудио поток...")
+        # Starting audio stream silently
         self.stream = sd.InputStream(
             samplerate=self.sample_rate,
             channels=self.channels,
@@ -267,7 +267,7 @@ class AudioStream:
             callback=self._audio_callback
         )
         self.stream.start()
-        print(f"[AUDIO] Аудио поток запущен: {self.sample_rate}Hz, {self.channels}ch, blocksize={self.chunk_size}")
+        # Audio stream started successfully
     
     def stop(self):
         """Остановить аудио поток"""

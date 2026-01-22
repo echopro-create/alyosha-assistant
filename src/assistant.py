@@ -156,6 +156,18 @@ class Assistant(QObject):
             self.state = state
         self.state_changed.emit(state)
     
+    def set_forced_model(self, mode: str):
+        """Set forced model mode (auto/flash/pro)"""
+        if mode == "auto":
+            self.llm.forced_model = None
+        else:
+            self.llm.forced_model = mode
+        # Emit signal to update UI
+        display_mode = "Auto" if mode == "auto" else "Manual"
+        display_model = "3 Pro" if mode == "pro" else "3 Flash"
+        self.model_changed.emit(display_mode, display_model)
+        logger.info(f"Model forced to: {mode}")
+    
     def _audio_callback(self, audio_chunk: np.ndarray, level: float):
         """Callback для обработки аудио"""
         if not self._running:
