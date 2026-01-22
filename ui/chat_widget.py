@@ -167,12 +167,13 @@ class MessageBubble(QFrame):
         h_container.setContentsMargins(0, 0, 0, 0)
         h_container.setSpacing(10)
         
-        # Message container
+        # Message container — dynamic width based on content
         self.bubble = QFrame()
         self.bubble.setStyleSheet(get_message_bubble_style(role))
-        # Allow bubble to expand horizontally
-        self.bubble.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.bubble.setMaximumWidth(450)
+        # MinimumExpanding = shrink to content but can grow if needed
+        self.bubble.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.bubble.setMinimumWidth(120)  # Minimum for very short messages
+        # Max width will be set dynamically in resizeEvent based on parent width
         
         # Add shadow to bubble for 3D effect
         shadow = QGraphicsDropShadowEffect()
@@ -187,8 +188,8 @@ class MessageBubble(QFrame):
         self.bubble.setGraphicsEffect(shadow)
         
         bubble_layout = QVBoxLayout(self.bubble)
-        bubble_layout.setContentsMargins(4, 4, 4, 4)
-        bubble_layout.setSpacing(4)
+        bubble_layout.setContentsMargins(12, 10, 12, 10)  # Proper padding for readability
+        bubble_layout.setSpacing(6)
         
         # Header with role label and copy button
         header = QHBoxLayout()
@@ -240,10 +241,10 @@ class MessageBubble(QFrame):
         message_label.setStyleSheet("background: transparent; border: none; padding: 0; margin: 0;")
         bubble_layout.addWidget(message_label)
         
-        # Alignment with avatar
+        # Alignment with avatar — use stretch factors for proper width distribution
         if role == "user":
-            h_container.addStretch(1) # Stretch on the left for user
-            h_container.addWidget(self.bubble)
+            h_container.addStretch(1)  # Push to right
+            h_container.addWidget(self.bubble, 3)  # Give bubble weight
             # User Avatar on the right
             avatar = AvatarWidget(role="user")
             h_container.addWidget(avatar, alignment=Qt.AlignmentFlag.AlignTop)
@@ -251,7 +252,8 @@ class MessageBubble(QFrame):
             # Avatar for assistant
             avatar = AvatarWidget(role="assistant")
             h_container.addWidget(avatar, alignment=Qt.AlignmentFlag.AlignTop)
-            h_container.addWidget(self.bubble, 1) # Force bubble to expand
+            h_container.addWidget(self.bubble, 3)  # Give bubble weight
+            h_container.addStretch(1)  # Balance on right
         else:  # system
             h_container.addWidget(self.bubble, 1)
         
@@ -423,10 +425,17 @@ class MessageBubble(QFrame):
         return text
     
     def resizeEvent(self, event):
-        """Handle resize — bubble width is fixed, no dynamic recalculation"""
+        """Handle resize — set dynamic max-width based on parent"""
         super().resizeEvent(event)
-        # NOTE: Removed dynamic max-width recalculation to prevent layout thrashing
-        # Bubble max-width is set once in __init__ (450px)
+        # Calculate 80% of available width for modern chat feel
+        if self.parentWidget():
+            available_width = self.parentWidget().width()
+            # 80% of parent, but cap at 600px for readability
+            max_w = min(int(available_width * 0.80), 600)
+            # Minimum 200px for very narrow windows
+            max_w = max(max_w, 200)
+            if hasattr(self, 'bubble'):
+                self.bubble.setMaximumWidth(max_w)
     
     def animate_in(self):
         """Smooth opacity fade-in animation (no height manipulation for stability)"""

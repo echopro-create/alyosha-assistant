@@ -309,11 +309,11 @@ def get_message_bubble_style(role: str, theme: str = "dark") -> str:
         background: {bg};
         border: 1px solid {border};
         border-radius: {border_radius};
-        padding: 8px 14px;
+        padding: 14px 18px;
         color: {c["text_primary"]};
-        font-size: 14px;
+        font-size: 15px;
         font-family: 'Ubuntu', 'Inter', 'Outfit', 'Noto Sans', sans-serif;
-        line-height: 1.4;
+        line-height: 1.5;
     """
 
 def get_role_label_style(role: str, theme: str = "dark") -> str:
