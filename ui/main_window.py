@@ -338,6 +338,10 @@ class MainWindow(QMainWindow):
         if self.assistant:
             self.assistant.start()
             self._check_first_run()
+            # Start autosave timer (every 30 seconds)
+            self.autosave_timer = QTimer(self)
+            self.autosave_timer.timeout.connect(self._save_session)
+            self.autosave_timer.start(30000)  # 30 seconds
 
     def _check_first_run(self):
         """Проверка первого запуска"""
@@ -571,6 +575,12 @@ class MainWindow(QMainWindow):
     def _on_voice_start(self):
         """Push-to-talk: start recording on button press"""
         if self.assistant:
+            # Play beep when starting voice recording
+            try:
+                from src.audio import AudioPlayer
+                AudioPlayer().play_beep()
+            except Exception:
+                pass
             self.assistant.start_voice_recording()
     
     def _on_voice_stop(self):

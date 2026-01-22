@@ -233,7 +233,12 @@ class TTS:
                 for chunk in audio_generator:
                     yield chunk
             except Exception as e:
-                logger.error(f"Stream error: {e}")
+                logger.error(f"ElevenLabs stream error: {e}, falling back to Piper")
+                # Fallback to Piper if ElevenLabs fails
+                if self.piper.is_available:
+                    audio = self.piper.synthesize(text)
+                    if audio:
+                        yield audio
         else:
             # Piper: synthesize fully then yield as one chunk
             audio = self.synthesize(text)
