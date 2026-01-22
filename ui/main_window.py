@@ -510,7 +510,6 @@ class MainWindow(QMainWindow):
             border: 2px solid rgba(56, 189, 248, 0.7);
             border-radius: 10px;
         """
-        original_style = self.status_label.styleSheet()
         self.status_label.setText("✨ Алёша слушает...")
         self.status_label.setStyleSheet(pulse_style)
         

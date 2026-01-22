@@ -535,17 +535,4 @@ class Assistant(QObject):
                 
         except Exception as e:
             logger.error(f"Playback error: {e}")
-    def set_forced_model(self, mode: str):
-        """
-        Установить принудительную модель
-        mode: "auto", "flash", or "pro"
-        """
-        if mode == "auto":
-            self.llm.forced_model = None
-        else:
-            self.llm.forced_model = mode
-        
-        # Emit initial signal for UI update
-        mode_str = "Auto" if not self.llm.forced_model else "Manual"
-        model_disp = "3 Pro" if mode == "pro" else "3 Flash"
-        self.model_changed.emit(mode_str, model_disp)
+
