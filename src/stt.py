@@ -75,7 +75,7 @@ class STT:
                 audio_float, 
                 beam_size=1,  # Was 5 — greedy decoding is much faster
                 language="ru",
-                vad_filter=True,  # Pre-filter silence — skips quiet parts
+                vad_filter=False,  # Rely on assistant.py silence detection
                 condition_on_previous_text=False,
                 temperature=0.0,
                 compression_ratio_threshold=2.4,  # Skip bad segments faster

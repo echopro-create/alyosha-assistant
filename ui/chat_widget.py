@@ -4,23 +4,23 @@ Premium чат-интерфейс с spring-анимациями и 3D-эффе�
 """
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, 
-    QLabel, QLineEdit, QPushButton, QFrame, QSpacerItem, 
-    QSizePolicy, QGraphicsDropShadowEffect, QGraphicsOpacityEffect
+    QLabel, QLineEdit, QPushButton, QFrame,
+    QSizePolicy, QGraphicsDropShadowEffect
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, 
-    QTimer, QSequentialAnimationGroup, QParallelAnimationGroup,
-    QPoint, QRect, QAbstractAnimation
+    QTimer
 )
 from PyQt6.QtGui import (
-    QFont, QColor, QPainter, QPainterPath, QPixmap, 
-    QImage, QBrush, QIcon, QLinearGradient
+    QColor, QPainter, QPainterPath, QPixmap, 
+    QImage
 )
 
 from .styles import (
     get_chat_widget_style, get_input_style, 
     get_button_style, get_message_bubble_style,
-    get_role_label_style, get_confirmation_style, COLORS
+    get_role_label_style, get_confirmation_style, 
+    get_typing_indicator_style, COLORS
 )
 
 
@@ -83,12 +83,13 @@ class AvatarWidget(QFrame):
             self.img_label.setFixedSize(self.size_val, self.size_val)
         else:
             # Fallback gradient
+            c = COLORS["dark"]
             self.setStyleSheet(f"""
                 background: qlineargradient(
                     spread:pad, x1:0, y1:0, x2:1, y2:1,
-                    stop:0 {'#0EA5E9' if role == 'user' else '#8B5CF6'},
-                    stop:0.5 {'#22D3EE' if role == 'user' else '#EC4899'},
-                    stop:1 {'#3B82F6' if role == 'user' else '#3B82F6'}
+                    stop:0 {c["aurora_1"]},
+                    stop:0.5 {c["aurora_3"]},
+                    stop:1 {c["aurora_5"]}
                 );
                 border: none;
                 border-radius: {self.size_val//2}px;
@@ -97,9 +98,14 @@ class AvatarWidget(QFrame):
         # Outer glow effect matching 2026 aesthetics
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(15)
-        shadow.setColor(glow_color if 'glow_color' in locals() else QColor(14, 165, 233, 120))
+        # Use simple color if glow_color not defined
+        shadow_col = glow_color if 'glow_color' in locals() else QColor(56, 189, 248, 120)
+        shadow.setColor(shadow_col)
         shadow.setOffset(0, 0)
         self.setGraphicsEffect(shadow)
+
+
+
 
 
 class TypingIndicator(QFrame):
@@ -108,12 +114,7 @@ class TypingIndicator(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self.setStyleSheet(f"""
-            background: {COLORS['dark']['bg_glass']};
-            border: 1px solid {COLORS['dark']['border']};
-            border-radius: 16px;
-            padding: 8px 12px;
-        """)
+        self.setStyleSheet(get_typing_indicator_style())
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -179,11 +180,11 @@ class MessageBubble(QFrame):
         shadow = QGraphicsDropShadowEffect()
         if role == "user":
             shadow.setBlurRadius(20)
-            shadow.setColor(QColor(14, 165, 233, 50))
+            shadow.setColor(QColor(COLORS["dark"]["shadow_accent"]))
             shadow.setOffset(0, 4)
         else:
             shadow.setBlurRadius(16)
-            shadow.setColor(QColor(0, 0, 0, 40))
+            shadow.setColor(QColor(COLORS["dark"]["shadow_sm"]))
             shadow.setOffset(0, 3)
         self.bubble.setGraphicsEffect(shadow)
         
@@ -219,12 +220,14 @@ class MessageBubble(QFrame):
                 border: none;
                 font-size: 12px;
                 border-radius: 4px;
+                color: {COLORS["dark"]["text_muted"]};
             }}
             QPushButton:hover {{
-                background: rgba(255, 255, 255, 0.1);
+                background: {COLORS["dark"]["bg_glass_hover"]};
+                color: {COLORS["dark"]["text_primary"]};
             }}
             QPushButton:pressed {{
-                background: rgba(255, 255, 255, 0.2);
+                background: {COLORS["dark"]["bg_glass_active"]};
             }}
         """)
         self.copy_button.clicked.connect(self._copy_text)
@@ -259,10 +262,8 @@ class MessageBubble(QFrame):
         
         layout.addLayout(h_container)
         
-        # Opacity effect for fade-in animation (no height manipulation!)
-        self.opacity_effect = QGraphicsOpacityEffect(self)
-        self.opacity_effect.setOpacity(0)
-        self.setGraphicsEffect(self.opacity_effect)
+        # Opacity effect disabled for stability
+        self.opacity_effect = None
     
     def enterEvent(self, event):
         """Show copy button on hover"""
@@ -438,14 +439,8 @@ class MessageBubble(QFrame):
                 self.bubble.setMaximumWidth(max_w)
     
     def animate_in(self):
-        """Smooth opacity fade-in animation (no height manipulation for stability)"""
-        # Simple opacity fade — no layout thrashing
-        self.fade_anim = QPropertyAnimation(self.opacity_effect, b"opacity")
-        self.fade_anim.setDuration(250)
-        self.fade_anim.setStartValue(0.0)
-        self.fade_anim.setEndValue(1.0)
-        self.fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.fade_anim.start()
+        """No animation - instant show for stability"""
+        pass
 
 
 class ChatWidget(QWidget):
@@ -495,18 +490,20 @@ class ChatWidget(QWidget):
         self.voice_button.setFixedSize(46, 46)
         self.voice_button.setStyleSheet(f"""
             QPushButton#voiceButton {{
-                background: rgba(255, 255, 255, 0.06);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: {COLORS['dark']['bg_glass']};
+                border: 1px solid {COLORS['dark']['border']};
                 border-radius: 23px;
                 font-size: 18px;
+                color: {COLORS['dark']['text_muted']};
             }}
             QPushButton#voiceButton:hover {{
-                background: rgba(255, 255, 255, 0.10);
-                border-color: rgba(255, 255, 255, 0.15);
+                background: {COLORS['dark']['bg_glass_hover']};
+                border-color: {COLORS['dark']['border_light']};
+                color: {COLORS['dark']['text_primary']};
             }}
             QPushButton#voiceButton:pressed {{
-                background: rgba(14, 165, 233, 0.20);
-                border-color: rgba(14, 165, 233, 0.30);
+                background: {COLORS['dark']['bg_glass_active']};
+                border-color: {COLORS['dark']['accent']};
             }}
         """)
         self.voice_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -520,7 +517,7 @@ class ChatWidget(QWidget):
         # Add subtle glow to voice button - Cyan theme
         voice_shadow = QGraphicsDropShadowEffect()
         voice_shadow.setBlurRadius(12)
-        voice_shadow.setColor(QColor(14, 165, 233, 60))  # Cyan glow
+        voice_shadow.setColor(QColor(COLORS["dark"]["accent_glow"]))  # Cyan glow
         voice_shadow.setOffset(0, 2)
         self.voice_button.setGraphicsEffect(voice_shadow)
         
@@ -551,7 +548,7 @@ class ChatWidget(QWidget):
         # Button shadow
         btn_shadow = QGraphicsDropShadowEffect()
         btn_shadow.setBlurRadius(16)
-        btn_shadow.setColor(QColor(14, 165, 233, 80))
+        btn_shadow.setColor(QColor(COLORS["dark"]["shadow_accent"]))
         btn_shadow.setOffset(0, 4)
         self.send_button.setGraphicsEffect(btn_shadow)
         
@@ -718,8 +715,7 @@ class ChatWidget(QWidget):
             bubble = MessageBubble(content, role, self.messages_widget)
             self.messages_layout.insertWidget(self.messages_layout.count() - 1, bubble)
             if not animate:
-                # Set opacity to 1 directly for instant display
-                bubble.opacity_effect.setOpacity(1.0)
+                pass
             else:
                 QTimer.singleShot(20, bubble.animate_in)
         
@@ -748,7 +744,8 @@ class ConfirmationDialog(QFrame):
         # Add glow effect
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(24)
-        shadow.setColor(QColor(239, 68, 68, 60))
+        c = COLORS["dark"]
+        shadow.setColor(QColor(c["error_glow"]))
         shadow.setOffset(0, 4)
         self.setGraphicsEffect(shadow)
         
@@ -765,7 +762,7 @@ class ConfirmationDialog(QFrame):
         
         title = QLabel("Опасная команда")
         title.setStyleSheet(f"""
-            color: #FCA5A5; 
+            color: {c["error"]}; 
             font-size: 15px; 
             font-weight: 700;
             letter-spacing: 0.3px;
@@ -781,10 +778,10 @@ class ConfirmationDialog(QFrame):
         explain_label = QLabel(explanation)
         explain_label.setWordWrap(True)
         explain_label.setStyleSheet(f"""
-            color: #FFD93D;
+            color: {c["warning"]};
             font-size: 13px;
             font-weight: 500;
-            background: rgba(255, 217, 61, 0.1);
+            background: {c["warning_glow"]};
             border-radius: 8px;
             padding: 10px;
             margin: 4px 0;
@@ -794,8 +791,8 @@ class ConfirmationDialog(QFrame):
         # Command display
         cmd_container = QFrame()
         cmd_container.setStyleSheet(f"""
-            background: rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: {c["bg_secondary"]};
+            border: 1px solid {c["border_light"]};
             border-radius: 12px;
             padding: 12px;
         """)
@@ -805,7 +802,7 @@ class ConfirmationDialog(QFrame):
         cmd_label = QLabel(command)
         cmd_label.setWordWrap(True)
         cmd_label.setStyleSheet(f"""
-            color: #FFFFFF; 
+            color: {c["text_primary"]}; 
             font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace; 
             font-size: 13px;
             background: transparent;
@@ -828,9 +825,9 @@ class ConfirmationDialog(QFrame):
         self.confirm_btn.setObjectName("dangerButton")
         self.confirm_btn.setStyleSheet(f"""
             QPushButton#dangerButton {{
-                background: rgba(100, 100, 100, 0.5);
-                color: #888;
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                background: {COLORS["dark"]["bg_glass"]};
+                color: {COLORS["dark"]["text_muted"]};
+                border: 1px solid {COLORS["dark"]["border"]};
                 border-radius: 12px;
                 padding: 10px 20px;
                 font-size: 13px;
@@ -892,18 +889,19 @@ class ConfirmationDialog(QFrame):
             self.confirm_btn.setText("Выполнить")
             self.confirm_btn.setEnabled(True)
             self.confirm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            c = COLORS["dark"]
             self.confirm_btn.setStyleSheet(f"""
                 QPushButton#dangerButton {{
-                    background: rgba(239, 68, 68, 0.3);
-                    color: #FCA5A5;
-                    border: 1px solid rgba(239, 68, 68, 0.5);
+                    background: {c["error_glow"]};
+                    color: {c["error"]};
+                    border: 1px solid {c["text_muted"]};
                     border-radius: 12px;
                     padding: 10px 20px;
                     font-size: 13px;
                     font-weight: 600;
                 }}
                 QPushButton#dangerButton:hover {{
-                    background: rgba(239, 68, 68, 0.5);
+                    background: rgba(239, 68, 68, 0.3);
                 }}
             """)
             self.confirm_btn.clicked.connect(self._confirm)

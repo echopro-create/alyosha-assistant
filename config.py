@@ -2,7 +2,9 @@
 Alyosha Configuration
 Загрузка API ключей и настроек
 """
+
 import os
+import base64
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -28,7 +30,9 @@ LOG_BACKUP_COUNT = 3
 # API Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "ErXwobaYiN019PkySvjV") # Antoni (Male)
+ELEVENLABS_VOICE_ID = os.getenv(
+    "ELEVENLABS_VOICE_ID", "ErXwobaYiN019PkySvjV"
+)  # Antoni (Male)
 
 # Vosk model path
 VOSK_MODEL_PATH = MODELS_DIR / "vosk-model-small-ru-0.22"
@@ -43,7 +47,7 @@ CHUNK_SIZE = 4000
 BEEP_SOUND = SOUNDS_DIR / "beep.wav"
 
 # UI settings
-WINDOW_WIDTH = 420
+WINDOW_WIDTH = 500
 WINDOW_HEIGHT = 600
 ANIMATION_FPS = 60
 
@@ -65,15 +69,24 @@ PIPER_CONFIG_PATH = MODELS_DIR / "piper" / f"{PIPER_VOICE}.onnx.json"
 # Whisper STT model size: "tiny", "small", "medium", "large-v3"
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small")
 
+
 def validate_config() -> tuple[bool, list[str]]:
     """Проверка наличия необходимых ключей"""
     errors = []
-    
+
     if not GEMINI_API_KEY or GEMINI_API_KEY == "your_gemini_api_key_here":
         errors.append("GEMINI_API_KEY не установлен")
-    
+
     # ElevenLabs is optional - only show as warning, not error
-    
+
     return len(errors) == 0, errors
 
 
+def base64_encode_bytes(data: bytes) -> str:
+    """Encode bytes to base64 string"""
+    return base64.b64encode(data).decode("utf-8")
+
+
+def base64_decode(data: str) -> bytes:
+    """Decode base64 string to bytes"""
+    return base64.b64decode(data)
