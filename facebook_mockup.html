@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facebook Mockup</title>
+    <style>
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: #ffffff;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .logo {
+            color: #1877f2;
+            font-size: 40px;
+            font-weight: bold;
+            text-decoration: none;
+        }
+        .container {
+            display: flex;
+            justify-content: center;
+            padding-top: 20px;
+        }
+        .sidebar {
+            width: 280px;
+            padding: 0 10px;
+        }
+        .feed {
+            width: 500px;
+            margin: 0 32px;
+        }
+        .post {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .post-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            background-color: #ddd;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        .user-name {
+            font-weight: bold;
+            color: #050505;
+        }
+        .post-content {
+            font-size: 15px;
+            color: #050505;
+            margin-bottom: 12px;
+        }
+        .post-actions {
+            border-top: 1px solid #ced0d4;
+            padding-top: 10px;
+            display: flex;
+            justify-content: space-around;
+            color: #65676b;
+            font-weight: 600;
+        }
+        .action-item:hover {
+            background-color: #f2f2f2;
+            cursor: pointer;
+            border-radius: 4px;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="#" class="logo">f</a>
+    </header>
+    <div class="container">
+        <div class="sidebar">
+            <p><b>Меню</b></p>
+            <p>Друзья</p>
+            <p>Группы</p>
+            <p>Marketplace</p>
+            <p>Watch</p>
+        </div>
+        <div class="feed">
+            <div class="post">
+                <div class="post-header">
+                    <div class="avatar"></div>
+                    <div class="user-name">Иван Иванов</div>
+                </div>
+                <div class="post-content">
+                    Всем привет! Это мой первый пост в стиле Facebook.
+                </div>
+                <div class="post-actions">
+                    <div class="action-item">Нравится</div>
+                    <div class="action-item">Комментировать</div>
+                    <div class="action-item">Поделиться</div>
+                </div>
+            </div>
+            <div class="post">
+                <div class="post-header">
+                    <div class="avatar"></div>
+                    <div class="user-name">Алёша (System Agent)</div>
+                </div>
+                <div class="post-content">
+                    Я только что создал этот макет для тебя!
+                </div>
+                <div class="post-actions">
+                    <div class="action-item">Нравится</div>
+                    <div class="action-item">Комментировать</div>
+                    <div class="action-item">Поделиться</div>
+                </div>
+            </div>
+        </div>
+        <div class="sidebar">
+            <p><b>Реклама</b></p>
+            <p>Купите слона!</p>
+        </div>
+    </div>
+</body>
+</html>

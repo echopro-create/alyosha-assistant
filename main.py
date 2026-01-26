@@ -13,8 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QFontDatabase
+from PyQt6.QtGui import QFontDatabase
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -151,7 +150,8 @@ def main():
     
     # Initialize assistant
     # Initialize assistant (async)
-    window.init_assistant()
+    # Initialize assistant (async) - Moved to __init__
+    # window.init_assistant()
     
     # Start assistant and show window
     window.show()

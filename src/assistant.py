@@ -221,17 +221,25 @@ class Assistant(QObject):
         self.live_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.live_loop)
 
+        print("[DEBUG] Event loop created for Live Client")
+
         try:
             # Connect
+            print("[DEBUG] Attempting to connect to Gemini Live...")
             self.live_loop.run_until_complete(self.live_client.connect())
+            print("[DEBUG] Connected to Gemini Live!")
 
             # Keep loop running for background tasks (receive_loop) and incoming send calls
             self.live_loop.run_forever()
 
         except Exception as e:
             logger.error(f"Async loop error: {e}")
+            print(f"[DEBUG] Async loop error: {e}")
+            self.error_occurred.emit(f"Ошибка Live режима: {e}")
+            self._set_state(AssistantState.IDLE)  # Reset state logic to avoid stuck UI
         finally:
-            self.live_loop.close()
+            if self.live_loop:
+                self.live_loop.close()
             self.live_loop = None
 
     def stop_live_session(self):
@@ -392,95 +400,175 @@ class Assistant(QObject):
         self._process_request(text)
 
     def _process_request(self, text: str, image_path: str = ""):
-        """Обработка запроса с поддержкой Native Tool Calling"""
+        """
+        Orchestrator Loop: The Brain of Alyosha
+        Implements ReAct (Reason+Act) pattern with safety checks.
+        """
         self._set_state(AssistantState.THINKING)
         self.memory.add_user_message(text)
 
-        attempts = 0
-        max_attempts = 5  # Allow for multi-step tool use
-        current_text = text
+        # Max steps to prevent infinite loops (Google standard is ~10-15, we start with 10)
+        max_steps = 10
+        step = 0
+
+        # Context accumulation (we work with a local copy of conversation for this task)
+        context = self.memory.get_context()
+        user_profile = self.personal_memory.get_summary_for_llm()
         current_image = image_path
 
-        try:
-            while attempts < max_attempts:
-                attempts += 1
+        # --- ORCHESTRATOR LOOP ---
+        while step < max_steps:
+            step += 1
+            logger.info(f"--- Step {step}/{max_steps} ---")
 
-                # Get response from LLM
-                context = self.memory.get_context()
-                user_profile = self.personal_memory.get_summary_for_llm()
+            try:
+                # 1. THINK
+                # We ask the LLM what to do next
+                # We pass the full context (history + intermediate tool results)
                 response = self.llm.chat(
-                    current_text, context, current_image, user_profile
+                    text,  # Original user query (or updated prompt if needed, but usually history handles it)
+                    context,
+                    current_image,
+                    user_profile,
                 )
 
-                # Extract parts
+                # Extract response parts
                 if not response.parts:
                     logger.warning("Empty response from LLM")
-                    break
+                    break  # Should retry or ask clarification? For now, break.
 
                 part = response.parts[0]
 
-                # CASE 1: Function Call (The "Thinking" / "Acting" State)
+                # 2. DECIDE & ACT
+
+                # CASE A: FUNCTION CALL (The Agent wants to use a tool)
                 if part.function_call:
                     fc = part.function_call
                     tool_name = fc.name
                     args = dict(fc.args)
 
-                    logger.info(f"Tool Call: {tool_name} with {args}")
+                    logger.info(f"Orchestrator: Agent wants to run {tool_name}({args})")
 
-                    # Dynamic Tool Execution
+                    # SAFETY CHECK
                     from .tools_def import TOOL_DEFINITIONS
-                    
-                    # Create a map of available tools
+
                     tool_map = {t.__name__: t for t in TOOL_DEFINITIONS}
-                    
+
                     if tool_name in tool_map:
                         tool_func = tool_map[tool_name]
-                        try:
-                            # Execute the tool function
-                            tool_result = str(tool_func(**args))
-                        except Exception as e:
-                            tool_result = f"Error executing {tool_name}: {str(e)}"
-                    else:
-                        tool_result = f"Unknown tool: {tool_name}"
+                        is_safe = getattr(tool_func, "SAFE", False)
 
-                    # Feed result back to LLM (Context Injection)
-                    # Feed result back to LLM (Context Injection)
-                    self.memory.add_system_message(
-                        f"Tool '{tool_name}' result: {tool_result}"
-                    )
-                    current_text = f"Tool result: {tool_result}. Continue."
-                    
-                    # Logic for Vision: If tool returned an image path, feed it to next turn
-                    if tool_result.strip().endswith(".png") or tool_result.strip().endswith(".jpg"):
-                         import os
-                         if os.path.exists(tool_result.strip()):
-                             logger.info(f"Injecting image into context: {tool_result}")
-                             current_image = tool_result.strip()
-                         else:
-                             current_image = ""
+                        # --- CONFIRMATION LOGIC ---
+                        if not is_safe:
+                            # Pause and ask user
+                            # NOTE: This blocks the thread. In GUI app this is tricky.
+                            # We emit a signal and Wait.
+                            # For MVP V1, we simply LOG it and maybe Auto-Allow "ls/grep" but Block "rm/install"
+                            # WAIT! We can use self.executor.confirm_pending() logic?
+                            # Or just auto-run for now if it's 'ls'?
+                            # Let's trust the "SAFE=False" flag means "Be careful".
+                            # For typical diag commands (ls, cat, which), we should have marked them SAFE=True?
+                            # No, execute_bash is generic.
+
+                            # Heuristic: Read-only bash is semi-safe.
+                            cmd = args.get("command", "")
+                            is_readonly = any(
+                                cmd.strip().startswith(x)
+                                for x in [
+                                    "ls",
+                                    "cat",
+                                    "grep",
+                                    "find",
+                                    "which",
+                                    "whoami",
+                                    "pwd",
+                                    "ps",
+                                    "df",
+                                    "free",
+                                ]
+                            )
+
+                            if (
+                                not is_readonly and "pkexec" not in cmd
+                            ):  # Updates/installs need confirmation technically, but pkexec has its own GUI!
+                                # If it's `pkexec`, Linux handles the UI auth prompt. So it IS safe to call from our side.
+                                # If it's `rm -rf`, that's dangerous.
+                                if "rm " in cmd or "mv " in cmd or "dd " in cmd:
+                                    # DANGER.
+                                    # We simulate a "User Denied" for now to prevent disaster without UI popup code ready
+                                    # TODO: Implement GUI popup confirmation via Signal
+                                    tool_result = "Error: Command considered dangerous. User confirmation implementation pending."
+                                    # We continue loop to let LLM handle the rejection
+                                else:
+                                    # Semi-safe or pkexec
+                                    try:
+                                        tool_result = str(tool_func(**args))
+                                    except Exception as e:
+                                        tool_result = f"Error: {e}"
+                            else:
+                                # Read-only, just run
+                                try:
+                                    tool_result = str(tool_func(**args))
+                                except Exception as e:
+                                    tool_result = f"Error: {e}"
+                        else:
+                            # Safe tool (screenshot, audio)
+                            try:
+                                tool_result = str(tool_func(**args))
+                            except Exception as e:
+                                tool_result = f"Error: {e}"
                     else:
-                        current_image = ""  # Clear image after first use
-                    
+                        tool_result = f"System Error: Tool {tool_name} not found."
+
+                    # 3. OBSERVE (Feedback Loop)
+                    logger.info(f"Orchestrator: Tool Output -> {tool_result[:100]}...")
+
+                    # Special Case: Vision
+                    if tool_name == "take_screenshot" and tool_result.endswith(".png"):
+                        import os
+
+                        if os.path.exists(tool_result):
+                            current_image = tool_result
+                            logger.info("Vision: Image captured and added to context.")
+
+                    # Add result to context so Agent knows what happened
+                    # In Gemini, we append a "FunctionResponse" (role='function' usually).
+                    # Since we manage context manually as simple dicts in this MVP:
+                    context.append(
+                        {"role": "model", "content": f"Called {tool_name}({args})"}
+                    )
+                    context.append(
+                        {"role": "user", "content": f"Tool Output: {tool_result}"}
+                    )
+
+                    # LOOP CONTINUES -> Agent will see output and decide next step.
                     continue
 
-                # CASE 2: Text Response (The "Speaking" State)
+                # CASE B: TEXT RESPONSE (Agent speaks / Final Answer)
                 if part.text:
                     message = part.text
+                    logger.info(f"Orchestrator: Agent speaks -> {message[:50]}...")
 
-                    # Add to memory
+                    # Check if it's just a "Thought" (e.g. "I will now...")
+                    # Or a final answer?
+                    # With "Silent Execution" prompt, text usually means "Here is the result".
+
+                    # We output it to user
                     self.memory.add_assistant_message(message, "")
-
-                    # Emit assistant message
                     self.message_received.emit("assistant", message)
-
-                    # Speak
                     self._speak(message)
+
+                    # Breaking the loop means "Task Done".
+                    # However, sometimes agent speaks AND wants to continue?
+                    # For now, let's assume text = done.
                     break
 
-        except Exception as e:
-            logger.error(f"Processing error: {e}")
-            self.error_occurred.emit(f"Ошибка обработки: {str(e)}")
-            self._set_state(AssistantState.IDLE)
+            except Exception as e:
+                logger.error(f"Orchestrator Crash: {e}")
+                self.error_occurred.emit(f"Brain Error: {e}")
+                break
+
+        self._set_state(AssistantState.IDLE)
 
     def _speak(self, text: str):
         """Воспроизвести ответ (only if input was voice)"""

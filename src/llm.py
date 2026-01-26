@@ -8,28 +8,15 @@ from google import genai
 from google.genai import types
 import config
 from .tools_def import TOOL_DEFINITIONS
+import advanced_prompt
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Ты — Алёша, Автономный AI Агент для Linux.
 
-ПРИНЦИПЫ:
-1. ТЫ — АГЕНТ, А НЕ ЧАТ-БОТ. Твоя задача — выполнить просьбу, а не просто ответить.
-2. АВТОНОМНОСТЬ: Если инструмент вернул ошибку, ТЫ ДОЛЖЕН САМ ЕЁ ИСПРАВИТЬ.
-   - Пример: "Файл не найден" -> Найди его (`find`).
-   - Пример: "Пакет не установлен" -> Установи его.
-   - Пример: "Путь не существует" -> Узнай правильный путь (`ls ~`, `xdg-user-dir`).
-3. НЕ СДАВАЙСЯ. Пробуй разные подходы (минимум 3 попытки), прежде чем сообщать об ошибке.
-4. ЛОГИКА (ReAct):
-   - Получил задачу -> Подумал -> Вызвал инструмент -> Получил результат.
-   - Если Успех -> Сообщи пользователю.
-   - Если Ошибка -> ПРОАНАЛИЗИРУЙ причину -> ПРИДУМАЙ фикс -> ПОПРОБУЙ снова.
+# Technical Context (Agent Capabilities)
 
-ИНСТРУМЕНТЫ:
-- `execute_bash`: Твой главный меч. Используй для ВСЕГО.
-- `control_audio`: Для звука.
-
-ТЫ ДЕРЗКИЙ, НО КОМПЕТЕНТНЫЙ. ДЕЙСТВУЙ."""
+# Link directly to advanced_prompt
+SYSTEM_PROMPT = advanced_prompt.SYSTEM_PROMPT
 
 
 class LLM:
@@ -37,8 +24,8 @@ class LLM:
 
     def __init__(self):
         self.client = genai.Client(api_key=config.GEMINI_API_KEY)
-        self.model_flash = "gemini-2.0-flash"
-        self.model_pro = "gemini-2.0-flash"
+        self.model_flash = "gemini-3-flash-preview"
+        self.model_pro = "gemini-3-pro-preview"
         self.forced_model = None
         self.active_model = self.model_flash
 
@@ -113,9 +100,11 @@ class LLM:
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     temperature=0.7,
-                    tools=tools, 
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=False) 
-                )
+                    tools=tools,
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=False
+                    ),
+                ),
             )
             return response
         except Exception as e:

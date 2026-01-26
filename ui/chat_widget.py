@@ -5,7 +5,7 @@ Premium чат-интерфейс с spring-анимациями и 3D-эффе�
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, 
     QLabel, QLineEdit, QPushButton, QFrame,
-    QSizePolicy, QGraphicsDropShadowEffect
+    QSizePolicy, QGraphicsDropShadowEffect, QApplication, QGraphicsOpacityEffect
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, 
@@ -22,6 +22,7 @@ from .styles import (
     get_role_label_style, get_confirmation_style, 
     get_typing_indicator_style, COLORS
 )
+from .icons import IconFactory
 
 
 class AvatarWidget(QFrame):
@@ -210,7 +211,8 @@ class MessageBubble(QFrame):
         header.addStretch()
         
         # Copy button (hidden by default)
-        self.copy_button = QPushButton("📋")
+        self.copy_button = QPushButton()
+        self.copy_button.setIcon(IconFactory.get_icon("copy", COLORS["dark"]["text_muted"], 14))
         self.copy_button.setFixedSize(24, 24)
         self.copy_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.copy_button.setToolTip("Копировать")
@@ -218,20 +220,22 @@ class MessageBubble(QFrame):
             QPushButton {{
                 background: transparent;
                 border: none;
-                font-size: 12px;
                 border-radius: 4px;
-                color: {COLORS["dark"]["text_muted"]};
             }}
             QPushButton:hover {{
                 background: {COLORS["dark"]["bg_glass_hover"]};
-                color: {COLORS["dark"]["text_primary"]};
             }}
             QPushButton:pressed {{
                 background: {COLORS["dark"]["bg_glass_active"]};
             }}
         """)
         self.copy_button.clicked.connect(self._copy_text)
-        self.copy_button.hide()  # Hidden by default
+        
+        # Opacity Effect for smooth fade (prevents layout jumps)
+        self.copy_opacity = QGraphicsOpacityEffect(self.copy_button)
+        self.copy_opacity.setOpacity(0.0)
+        self.copy_button.setGraphicsEffect(self.copy_opacity)
+        
         header.addWidget(self.copy_button)
         
         bubble_layout.addLayout(header)
@@ -262,29 +266,40 @@ class MessageBubble(QFrame):
         
         layout.addLayout(h_container)
         
-        # Opacity effect disabled for stability
-        self.opacity_effect = None
+        # Setup animations
+        self.anim_in = QPropertyAnimation(self.copy_opacity, b"opacity")
+        self.anim_in.setDuration(200)
+        self.anim_in.setStartValue(0.0)
+        self.anim_in.setEndValue(1.0)
+        self.anim_in.setEasingCurve(QEasingCurve.Type.OutQuad)
+        
+        self.anim_out = QPropertyAnimation(self.copy_opacity, b"opacity")
+        self.anim_out.setDuration(200)
+        self.anim_out.setStartValue(1.0)
+        self.anim_out.setEndValue(0.0) 
+        self.anim_out.setEasingCurve(QEasingCurve.Type.OutQuad)
     
     def enterEvent(self, event):
         """Show copy button on hover"""
-        self.copy_button.show()
+        self.anim_out.stop()
+        self.anim_in.start()
         super().enterEvent(event)
     
     def leaveEvent(self, event):
         """Hide copy button when not hovering"""
-        self.copy_button.hide()
+        self.anim_in.stop()
+        self.anim_out.start()
         super().leaveEvent(event)
     
     def _copy_text(self):
         """Copy message text to clipboard"""
-        from PyQt6.QtWidgets import QApplication
         clipboard = QApplication.clipboard()
         clipboard.setText(self._raw_text)
         # Visual feedback
-        self.copy_button.setText("✓")
+        self.copy_button.setIcon(IconFactory.get_icon("check", COLORS["dark"]["success"], 14))
         self.copy_button.setToolTip("Скопировано!")
         QTimer.singleShot(1500, lambda: (
-            self.copy_button.setText("📋"),
+            self.copy_button.setIcon(IconFactory.get_icon("copy", COLORS["dark"]["text_muted"], 14)),
             self.copy_button.setToolTip("Копировать")
         ))
     
@@ -485,7 +500,8 @@ class ChatWidget(QWidget):
         input_layout.setSpacing(10)
         input_layout.setContentsMargins(8, 0, 8, 8)
         # Voice button (microphone) - 2026 minimal style
-        self.voice_button = QPushButton("🎤")  # Clean mic icon
+        self.voice_button = QPushButton()  # Clean mic icon
+        self.voice_button.setIcon(IconFactory.get_icon("mic", COLORS['dark']['text_muted'], 24))
         self.voice_button.setObjectName("voiceButton")
         self.voice_button.setFixedSize(46, 46)
         self.voice_button.setStyleSheet(f"""
@@ -538,7 +554,8 @@ class ChatWidget(QWidget):
         # self.input_field.focusOutEvent = self._on_input_focus_out
         
         # Send button with gradient
-        self.send_button = QPushButton("➤")
+        self.send_button = QPushButton()
+        self.send_button.setIcon(IconFactory.get_icon("send", COLORS["dark"]["text_muted"], 20))
         self.send_button.setObjectName("sendButton")
         self.send_button.setFixedSize(46, 46) # Slightly smaller for more elegance
         self.send_button.setStyleSheet(get_button_style())

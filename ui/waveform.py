@@ -5,7 +5,7 @@ Premium Siri-style aurora волна с bloom-эффектами
 import math
 import random
 from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import QTimer, Qt, QPointF, QRectF
+from PyQt6.QtCore import QTimer, Qt, QPointF
 from PyQt6.QtGui import (
     QPainter, QPainterPath, QLinearGradient, QRadialGradient,
     QColor, QPen, QBrush
@@ -18,9 +18,14 @@ class WaveformWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self.setMinimumHeight(100)
-        self.setMaximumHeight(120)
+        self.setMinimumHeight(60)
+        self.setSizePolicy(
+            self.sizePolicy().horizontalPolicy(),
+            self.sizePolicy().verticalPolicy()
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)  # Allow clicking through
+
         
         # Animation state
         self.phase = 0.0
@@ -46,7 +51,18 @@ class WaveformWidget(QWidget):
         # Animation timer (60 FPS)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._animate)
-        self.timer.start(16)  # ~60 FPS
+
+        # Don't start automatically to save CPU
+    
+    def start_animation(self):
+        if not self.timer.isActive():
+            self.timer.start(16)
+            
+    def stop_animation(self):
+        self.timer.stop()
+        self.particles = [] # Clear particles implies reset
+        self._init_particles()
+        self.update()
     
     def _init_particles(self):
         """Инициализация частиц для эффекта"""
@@ -73,8 +89,15 @@ class WaveformWidget(QWidget):
             self.target_amplitude = 0.6
         elif speaking:
             self.target_amplitude = 0.75
-        else:
-            self.target_amplitude = 0.35
+
+            
+        # Optimize: stop timer if idle
+        if not any([listening, thinking, speaking]):
+             # Keep running for idle wave? Or stop?
+             # Let's keep a minimal idle wave for "alive" feel, but maybe slower?
+             # For now, just keep running but maybe check if we want to pause.
+             pass
+
     
     def set_audio_level(self, level: float):
         """Установить уровень громкости для реакции волны"""

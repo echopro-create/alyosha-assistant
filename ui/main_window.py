@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QGraphicsOpacityEffect,
     QSystemTrayIcon,
     QMenu,
+    QSizePolicy,
 )
 from PyQt6.QtCore import (
     Qt,
@@ -43,9 +44,18 @@ from .styles import (
     get_status_label_style,  # Added import
 )
 from .chat_widget import ChatWidget, ConfirmationDialog
+from .icons import IconFactory
+from .settings_window import SettingsWindow
+from .waveform import WaveformWidget
+from .onboarding import OnboardingOverlay
+from .toasts import ToastManager
+from .sidebar import SidebarWidget
 from src.assistant import Assistant, AssistantState
 from src.session_manager import SessionManager
 import config
+import logging
+from src.logging_utils import QLogHandler
+from .terminal_drawer import TerminalDrawer
 
 
 class ClickableLabel(QLabel):
@@ -83,6 +93,10 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        
+        # Init Logger
+        self.log_handler = QLogHandler()
+        logging.getLogger().addHandler(self.log_handler)
 
         self.assistant = None
         self.drag_position = None
@@ -93,6 +107,12 @@ class MainWindow(QMainWindow):
         self.setup_shortcuts()
         self.setup_tray()
         self.setup_animations()
+        
+        # Connect logger to terminal
+        self.log_handler.emitter.log_signal.connect(self.terminal.append_log)
+        
+        # Load assistant
+        self._load_assistant()
 
     def setup_window(self):
         """Настройка окна"""
@@ -159,6 +179,9 @@ class MainWindow(QMainWindow):
 
     def setup_ui(self):
         """Настройка UI"""
+        # Initialize toast manager
+        self.toast_manager = None # Will init after central widget
+        
         # Outer container to allow shadow space
         container = QWidget()
         container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -177,6 +200,9 @@ class MainWindow(QMainWindow):
         central.setObjectName("centralWidget")
         self.setStyleSheet(get_main_window_style())
         container_layout.addWidget(central)
+        
+        # Init toast manager with container as parent
+        self.toast_manager = ToastManager(central)
 
         # Add shadow effect to main frame
         shadow = QGraphicsDropShadowEffect()
@@ -185,22 +211,49 @@ class MainWindow(QMainWindow):
         shadow.setOffset(0, 4)
         central.setGraphicsEffect(shadow)
 
-        # Direct Layout (No Stacking)
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(12, 12, 12, 8)
-        layout.setSpacing(8)
+        # Main Horizontal Layout (Sidebar + Content)
+        main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # Sidebar
+        self.sidebar = SidebarWidget(self.session_manager)
+        self.sidebar.session_selected.connect(self._load_session)
+        self.sidebar.new_chat_requested.connect(self._start_new_chat)
+        main_layout.addWidget(self.sidebar)
+
+        # Content Area
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(12, 12, 12, 8)
+        content_layout.setSpacing(8)
+        
+        main_layout.addWidget(content)
 
         # Header
         header = self._create_header()
-        layout.addWidget(header)
+        content_layout.addWidget(header)
+        
+        # Waveform (hidden by default)
+        self.waveform = WaveformWidget()
+        self.waveform.hide()
+        content_layout.addWidget(self.waveform)
 
         # Chat (main content - full vertical space)
         self.chat = ChatWidget()
+        content_layout.addWidget(self.chat)
+        
+        # Terminal Drawer (Hidden by default)
+        self.terminal = TerminalDrawer()
+        self.terminal.hide()
+        content_layout.addWidget(self.terminal)
+
+        # Input Area (Floating at bottom)
         self.chat.message_sent.connect(self._on_text_message)
         self.chat.voice_button_clicked.connect(self._on_voice_button)
         self.chat.voice_button_pressed.connect(self._on_voice_start)
         self.chat.voice_button_released.connect(self._on_voice_stop)
-        layout.addWidget(self.chat, stretch=1)
+        content_layout.addWidget(self.chat, stretch=1)
         # Status label is now in header (created in _create_header)
 
     def _create_header(self) -> QWidget:
@@ -213,22 +266,50 @@ class MainWindow(QMainWindow):
 
         title = QLabel("Алёша")
         title.setStyleSheet(get_title_style())
+        
+        # Menu Button
+        menu_btn = QPushButton()
+        menu_btn.setFixedSize(32, 32)
+        menu_btn.setIcon(IconFactory.get_icon("menu", COLORS["dark"]["text_secondary"], 20))
+        menu_btn.setStyleSheet(get_control_button_style())
+        menu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        menu_btn.clicked.connect(lambda: self.sidebar.toggle())
+        header_layout.addWidget(menu_btn)
+        
         header_layout.addWidget(title)
         
         # Spacing after title
         header_layout.addSpacing(8)
         
-        # Status chip (compact inline status)
+
+        
+        # Flexible spacer to push everything else to the right
+        header_layout.addStretch(1)
+        
+        # Status chip (responsive - can shrink or disappear)
         self.status_label = QLabel("ОЖИДАНИЕ")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet(get_status_label_style("idle"))
-        header_layout.addWidget(self.status_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         
-        # Flexible spacer to push everything else to the right
-        header_layout.addStretch()
+        # Allow status to shrink freely (Ignored = can shrink to 0)
+        # We give it a stretch factor of 0 so it doesn't fight with the spacer
+        status_sp = QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.status_label.setSizePolicy(status_sp)
+        self.status_label.setMinimumWidth(0)
+        
+        # Add with stretch 0 so it doesn't take extra space, just what it needs up to limit
+        header_layout.addWidget(self.status_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        
+        # Container for right-side controls (Live, Badge, Buttons)
+        # Using a layout with higher priority or specific alignment
+        right_container = QWidget()
+        right_layout = QHBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(4)
         
         # Live Mode Button
-        self.live_btn = QPushButton("⚡ Live")
+        self.live_btn = QPushButton(" Live")
+        self.live_btn.setIcon(IconFactory.get_icon("mic", COLORS["dark"]["text_muted"], 16))
         self.live_btn.setCheckable(True)
         self.live_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.live_btn.setStyleSheet(f"""
@@ -237,7 +318,7 @@ class MainWindow(QMainWindow):
                 background: transparent;
                 border: 1px solid {COLORS["dark"]["border"]};
                 border-radius: 10px;
-                padding: 4px 12px;
+                padding: 4px 8px; /* Compact padding */
                 font-weight: 600;
                 font-family: 'Inter', sans-serif;
             }}
@@ -252,47 +333,61 @@ class MainWindow(QMainWindow):
             }}
         """)
         self.live_btn.clicked.connect(self._toggle_live_mode)
-        header_layout.addWidget(self.live_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # Prevent shrinking below content size
+        self.live_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        right_layout.addWidget(self.live_btn)
 
-        # Spacing
-        header_layout.addSpacing(4)
-
-        # Model Indicator Badge - 2026 subtle glass style
+        # Model Indicator Badge
         self.model_badge = ClickableLabel("3 Flash")
         self.model_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.model_badge.setCursor(Qt.CursorShape.PointingHandCursor)
         self.model_badge.setStyleSheet(get_model_badge_style("Auto"))
+        self.model_badge.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.model_badge.clicked.connect(self._show_model_menu)
-        header_layout.addWidget(self.model_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+        right_layout.addWidget(self.model_badge)
         
-        # Control buttons container
-        controls = QWidget()
-        controls_layout = QHBoxLayout(controls)
+        # Control buttons
+        controls_layout = QHBoxLayout()
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setSpacing(8)
+        controls_layout.setSpacing(2) # Tighter spacing
         
-        # Minimize button
-        min_btn = QPushButton("─")
-        min_btn.setFixedSize(32, 32)
-        min_btn.setStyleSheet(get_control_button_style())
-        min_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        min_btn.clicked.connect(self.showMinimized)
-        min_btn.setToolTip("Свернуть")
-        controls_layout.addWidget(min_btn)
+        for icon_name, handler, tooltip in [
+            ("terminal", self._toggle_terminal, "Терминал"),
+            ("settings", self._show_settings, "Настройки"),
+            ("minus", self.showMinimized, "Свернуть"),
+            ("x", self.hide, "Скрыть")
+        ]:
+            if icon_name == "terminal":
+                # Special styling for terminal button maybe? For now standard.
+                pass
+                
+            btn = QPushButton()
+            btn.setFixedSize(28, 28) # Smaller buttons
+            btn.setIcon(IconFactory.get_icon(icon_name, COLORS["dark"]["text_muted"], 18))
+            btn.setStyleSheet(get_control_button_style())
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(handler)
+            btn.setToolTip(tooltip)
+            if icon_name == "x":
+                btn.setObjectName("closeButton")
+            controls_layout.addWidget(btn)
         
-        # Close button
-        close_btn = QPushButton("✕")
-        close_btn.setObjectName("closeButton")
-        close_btn.setFixedSize(32, 32)
-        close_btn.setStyleSheet(get_control_button_style())
-        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        close_btn.clicked.connect(self.hide)  # Hide instead of close
-        close_btn.setToolTip("Скрыть (в трей)")
-        controls_layout.addWidget(close_btn)
+        right_layout.addLayout(controls_layout)
         
-        header_layout.addWidget(controls)
+        # Add right container with priority
+        header_layout.addWidget(right_container, 0, Qt.AlignmentFlag.AlignRight)
         
         return header
+
+    def _toggle_terminal(self):
+        """Переключить видимость терминала"""
+        if self.terminal.isVisible():
+            self.terminal.hide()
+        else:
+            self.terminal.show()
+            # Scroll to bottom
+            sb = self.terminal.text_area.verticalScrollBar()
+            sb.setValue(sb.maximum())
 
     def setup_shortcuts(self):
         """Настройка горячих клавиш"""
@@ -314,7 +409,7 @@ class MainWindow(QMainWindow):
         self.status_fade.setDuration(300)
         self.status_fade.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
-    def init_assistant(self):
+    def _load_assistant(self):
         """Инициализировать ассистента асинхронно"""
         # Validate config first
         valid, errors = config.validate_config()
@@ -389,22 +484,17 @@ class MainWindow(QMainWindow):
                 self.chat.add_message("Привет, я Алёша. Что на этот раз?", "assistant")
 
     def show_onboarding(self):
-        """Показать обучение"""
-        QTimer.singleShot(
-            1000,
-            lambda: self.chat.add_message(
-                "👋 **Привет! Я Алёша.**\n\n"
-                "Я твой новый дерзкий ассистент с характером.\n"
-                "Вот что я умею:\n\n"
-                "1. **Управлять системой**: `громкость 50%`, `открой firefox`\n"
-                "2. **Инструменты**: `посчитай 2+2`, `найди котиков`\n"
-                "3. **Болтать**: просто скажи что-нибудь\n\n"
-                "Для активации скажи **«Алёша»** или нажми `Ctrl+Shift+Space`.",
-                "assistant",
-            ),
-        )
-        # Show keyboard shortcuts overlay
-        QTimer.singleShot(1500, self._show_shortcuts_overlay)
+        """Показать красивое графическое обучение"""
+        # Close existing if present
+        if hasattr(self, 'onboarding_overlay') and self.onboarding_overlay:
+            self.onboarding_overlay.close()
+            
+        self.onboarding_overlay = OnboardingOverlay(self.centralWidget())
+        self.onboarding_overlay.resize(self.centralWidget().size())
+        self.onboarding_overlay.show()
+        
+        # When finished, show keyboard tips
+        self.onboarding_overlay.finished.connect(lambda: QTimer.singleShot(500, self._show_shortcuts_overlay))
 
     def _show_shortcuts_overlay(self):
         """Показать оверлей горячих клавиш"""
@@ -452,6 +542,26 @@ class MainWindow(QMainWindow):
             self.chat.show_typing_indicator()
         else:
             self.chat._hide_typing_indicator()
+            
+        # Update Waveform
+        is_active = state in [AssistantState.LISTENING, AssistantState.THINKING, AssistantState.SPEAKING]
+        
+        self.waveform.set_state(
+            listening=(state == AssistantState.LISTENING),
+            thinking=(state == AssistantState.THINKING),
+            speaking=(state == AssistantState.SPEAKING)
+        )
+        
+        if is_active:
+            if not self.waveform.isVisible():
+                self.waveform.show()
+                self.waveform.start_animation()
+        else:
+            if self.waveform.isVisible():
+                # self.waveform.hide() # Optional: keep visible but flat?
+                # Better UX: Hide when idle to keep clean interface
+                self.waveform.hide()
+                self.waveform.stop_animation()
 
         # Play beep when starting to listen
         if state == AssistantState.LISTENING:
@@ -466,8 +576,9 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(float)
     def _on_audio_level(self, level: float):
-        """Обработка уровня громкости (currently no visual for this)"""
-        pass  # Waveform removed - audio level visualization disabled
+        """Обработка уровня громкости"""
+        if self.waveform.isVisible():
+            self.waveform.set_audio_level(level)
 
     @pyqtSlot(str, str)
     def _on_message(self, role: str, content: str):
@@ -723,6 +834,10 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event):
         """Обновление при изменении размера"""
         super().resizeEvent(event)
+        # Resize overlay if active
+        if hasattr(self, 'onboarding_overlay') and self.onboarding_overlay and self.onboarding_overlay.isVisible():
+             self.onboarding_overlay.resize(self.centralWidget().size())
+             
         # Note: We don't use setMask anymore as polygon masks create jagged edges
         # Rounded corners are handled by background_canvas drawing and CSS border-radius
 
@@ -773,6 +888,39 @@ class MainWindow(QMainWindow):
         # Position menu below label
         pos = self.model_badge.mapToGlobal(self.model_badge.rect().bottomLeft())
         menu.exec(pos)
+
+    def _show_settings(self):
+        """Показать окно настроек"""
+        # Close existing if open
+        if hasattr(self, 'settings_window') and self.settings_window:
+            self.settings_window.close()
+            
+        self.settings_window = SettingsWindow(self)
+        self.settings_window.settings_saved.connect(self._on_settings_saved)
+        
+        # Center relative to main window
+        x = self.x() + (self.width() - self.settings_window.width()) // 2
+        y = self.y() + (self.height() - self.settings_window.height()) // 2
+        self.settings_window.move(x, y)
+        self.settings_window.show()
+
+    def _on_settings_saved(self):
+        """Настройки сохранены — перезагрузка или уведомление"""
+        self.toast_manager.show("Настройки сохранены", "check", "success")
+        self.status_label.setText("Restart Required")
+
+    def _load_session(self, session_id: str):
+        """Загрузить сессию из истории"""
+        if self.session_manager.load_session(session_id):
+            messages = self.session_manager.get_messages()
+            self.chat.load_messages(messages, animate=False)
+            # Close sidebar on mobile-like view? No, keep it open or let user close.
+            
+    def _start_new_chat(self):
+        """Начать новый чат"""
+        self.session_manager.create_session()
+        self.chat.clear_messages()
+        self.chat.add_message("Привет, я Алёша. Что на этот раз?", "assistant")
 
     def _toggle_live_mode(self):
         """Переключение режима Live"""

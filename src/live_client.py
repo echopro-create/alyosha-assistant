@@ -14,8 +14,7 @@ class GeminiLiveClient:
     """
 
     HOST = "generativelanguage.googleapis.com"
-    URI = f"wss://{HOST}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key={config.GEMINI_API_KEY}"
-
+    
     def __init__(self, model_name: str = "gemini-2.0-flash-exp"):
         self.model_name = model_name
         self.ws = None
@@ -27,8 +26,11 @@ class GeminiLiveClient:
     async def connect(self):
         """Establish WebSocket connection and handshake"""
         try:
-            logger.info(f"Connecting to Gemini Live: {self.URI[:40]}...")
-            self.ws = await websockets.connect(self.URI)
+            # Construct URI dynamically to ensure latest API key is used
+            uri = f"wss://{self.HOST}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key={config.GEMINI_API_KEY}"
+            
+            logger.info("Connecting to Gemini Live...")
+            self.ws = await websockets.connect(uri)
             self._running = True
 
             # 1. Setup Handshake
